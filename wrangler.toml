@@ -1,0 +1,14 @@
+name = "climbing-database"
+compatibility_date = "2024-01-01"
+
+[env.production]
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "climbing-db"
+database_id = "your-database-id-here"
+
+[env.preview]
+[[env.preview.d1_databases]]
+binding = "DB"
+database_name = "climbing-db-preview"
+database_id = "your-preview-database-id-here"

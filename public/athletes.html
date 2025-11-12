@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Athletes - Hardest Climbs in the World</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Athletes</h1>
+            <p class="subtitle">Climbers who have completed the hardest climbs in the world</p>
+        </header>
+        
+        <nav>
+            <a href="/">Home</a>
+            <a href="/sport">Sport Climbs</a>
+            <a href="/boulder">Boulders</a>
+            <a href="/athletes" class="current">Athletes</a>
+            <a href="/export">📥 Export</a>
+            <a href="/new">Submit</a>
+        </nav>
+        
+        <main>
+            <div class="stats" id="stats">
+                Loading athletes...
+            </div>
+            
+            <div class="filters">
+                <select id="country-filter">
+                    <option value="">All Countries</option>
+                </select>
+                <select id="gender-filter">
+                    <option value="">All Genders</option>
+                </select>
+                <div class="search-container">
+                    <input type="text" id="search-input" placeholder="Search athletes...">
+                </div>
+            </div>
+            
+            <section id="athletes">
+                <div id="athletes-container" class="loading">
+                    Loading athletes...
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        let allAthletes = [];
+        
+        async function loadAthletes() {
+            const container = document.getElementById('athletes-container');
+            const statsDiv = document.getElementById('stats');
+            
+            try {
+                const response = await fetch('/api/athletes');
+                const athletes = await response.json();
+                
+                allAthletes = athletes;
+                
+                // Update stats
+                statsDiv.textContent = `Found ${athletes.length} athletes`;
+                
+                // Populate filter options
+                populateFilters(athletes);
+                
+                // Display athletes
+                displayAthletes(athletes);
+                
+            } catch (error) {
+                container.innerHTML = '<div class="error">Error loading athletes: ' + error.message + '</div>';
+                statsDiv.textContent = 'Error loading data';
+            }
+        }
+        
+        function populateFilters(athletes) {
+            const countryFilter = document.getElementById('country-filter');
+            const genderFilter = document.getElementById('gender-filter');
+            
+            // Get unique countries and genders
+            const countries = [...new Set(athletes.map(a => a.nationality).filter(Boolean))].sort();
+            const genders = [...new Set(athletes.map(a => a.gender).filter(Boolean))].sort();
+            
+            // Populate country filter
+            countries.forEach(country => {
+                const option = document.createElement('option');
+                option.value = country;
+                option.textContent = country;
+                countryFilter.appendChild(option);
+            });
+            
+            // Populate gender filter
+            genders.forEach(gender => {
+                const option = document.createElement('option');
+                option.value = gender;
+                option.textContent = gender;
+                genderFilter.appendChild(option);
+            });
+        }
+        
+        function displayAthletes(athletes) {
+            const container = document.getElementById('athletes-container');
+            
+            if (athletes.length === 0) {
+                container.innerHTML = '<div class="error">No athletes found</div>';
+                return;
+            }
+            
+            container.innerHTML = athletes.map(athlete => `
+                <div class="card">
+                    <div class="profile-name">${athlete.name}</div>
+                    <div class="profile-details text-muted mb-10">
+                        ${athlete.nationality ? '🏳️ ' + athlete.nationality : ''}
+                        ${athlete.gender ? ' • ' + athlete.gender : ''}
+                        ${athlete.year_of_birth ? ' • Born ' + athlete.year_of_birth : ''}
+                    </div>
+                    <a href="/athletes/${encodeURIComponent(athlete.name)}" class="link">View Profile →</a>
+                </div>
+            `).join('');
+        }
+        
+        function filterAthletes() {
+            const countryFilter = document.getElementById('country-filter').value;
+            const genderFilter = document.getElementById('gender-filter').value;
+            const searchInput = document.getElementById('search-input').value.toLowerCase();
+            
+            let filtered = allAthletes;
+            
+            if (countryFilter) {
+                filtered = filtered.filter(a => a.nationality === countryFilter);
+            }
+            
+            if (genderFilter) {
+                filtered = filtered.filter(a => a.gender === genderFilter);
+            }
+            
+            if (searchInput) {
+                filtered = filtered.filter(a => a.name.toLowerCase().includes(searchInput));
+            }
+            
+            displayAthletes(filtered);
+        }
+        
+        // Event listeners for filters
+        document.getElementById('country-filter').addEventListener('change', filterAthletes);
+        document.getElementById('gender-filter').addEventListener('change', filterAthletes);
+        document.getElementById('search-input').addEventListener('input', filterAthletes);
+        
+        // Load athletes when page loads
+        document.addEventListener('DOMContentLoaded', loadAthletes);
+    </script>
+</body>
+</html>

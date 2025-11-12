@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hardest Climbs in the World</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Hardest Climbs in the World</h1>
+            <p class="subtitle">Tracking the most difficult sport climbs and boulder problems</p>
+        </header>
+        
+<nav>
+            <a href="/">Home</a>
+            <a href="/sport">Sport Climbs</a>
+            <a href="/boulder">Boulders</a>
+            <a href="/athletes">Athletes</a>
+            <a href="/export">📥 Export</a>
+            <a href="/new">Submit</a>
+        </nav>
+        
+        <main>
+            <section id="top-climbs">
+                <h2>Top 10 Hardest Climbs</h2>
+                <div id="climbs-container" class="loading">
+                    Loading climbs...
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        async function loadTopClimbs() {
+            const container = document.getElementById('climbs-container');
+            
+            try {
+                // Get top sport climbs
+                const sportResponse = await fetch('/api/climbs?type=sport&limit=5');
+                const sportClimbs = await sportResponse.json();
+                
+                // Get top boulder problems  
+                const boulderResponse = await fetch('/api/climbs?type=boulder&limit=5');
+                const boulderClimbs = await boulderResponse.json();
+                
+                const allClimbs = [...sportClimbs, ...boulderClimbs];
+                
+                if (allClimbs.length === 0) {
+                    container.innerHTML = '<div class="error">No climbs found</div>';
+                    return;
+                }
+                
+                container.innerHTML = allClimbs.map(climb => `
+                    <div class="card">
+                        <div class="climb-name">${climb.name}</div>
+                        <div class="grade-badge ${climb.climb_type}-badge">${climb.grade}</div>
+                        <div class="text-muted mb-10">
+                            ${climb.location_country ? climb.location_country : ''}
+                            ${climb.location_area ? ' - ' + climb.location_area : ''}
+                        </div>
+                        <a href="/${climb.climb_type}/${encodeURIComponent(climb.name)}" class="link">View Details →</a>
+                    </div>
+                `).join('');
+                
+            } catch (error) {
+                container.innerHTML = '<div class="error">Error loading climbs: ' + error.message + '</div>';
+            }
+        }
+        
+        // Load climbs when page loads
+        document.addEventListener('DOMContentLoaded', loadTopClimbs);
+    </script>
+</body>
+</html>

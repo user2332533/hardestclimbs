@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Boulder Problems - Hardest Climbs in the World</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Boulder Problems</h1>
+            <p class="subtitle">The hardest boulder problems in the world</p>
+        </header>
+        
+        <nav>
+            <a href="/">Home</a>
+            <a href="/sport">Sport Climbs</a>
+            <a href="/boulder" class="current">Boulders</a>
+            <a href="/athletes">Athletes</a>
+            <a href="/export">📥 Export</a>
+            <a href="/new">Submit</a>
+        </nav>
+        
+        <main>
+            <div class="stats" id="stats">
+                Loading boulder problems...
+            </div>
+            
+            <div class="filters">
+                <select id="grade-filter">
+                    <option value="">All Grades</option>
+                </select>
+                <select id="country-filter">
+                    <option value="">All Countries</option>
+                </select>
+            </div>
+            
+            <section id="boulder-problems">
+                <div id="climbs-container" class="loading">
+                    Loading boulder problems...
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        let allClimbs = [];
+        
+        async function loadBoulderProblems() {
+            const container = document.getElementById('climbs-container');
+            const statsDiv = document.getElementById('stats');
+            
+            try {
+                const response = await fetch('/api/climbs?type=boulder&limit=200');
+                const climbs = await response.json();
+                
+                allClimbs = climbs;
+                
+                // Update stats
+                statsDiv.textContent = `Found ${climbs.length} boulder problems`;
+                
+                // Populate filter options
+                populateFilters(climbs);
+                
+                // Display climbs
+                displayClimbs(climbs);
+                
+            } catch (error) {
+                container.innerHTML = '<div class="error">Error loading climbs: ' + error.message + '</div>';
+                statsDiv.textContent = 'Error loading data';
+            }
+        }
+        
+        function populateFilters(climbs) {
+            const gradeFilter = document.getElementById('grade-filter');
+            const countryFilter = document.getElementById('country-filter');
+            
+            // Get unique grades and countries
+            const grades = [...new Set(climbs.map(c => c.grade))].sort();
+            const countries = [...new Set(climbs.map(c => c.location_country).filter(Boolean))].sort();
+            
+            // Populate grade filter
+            grades.forEach(grade => {
+                const option = document.createElement('option');
+                option.value = grade;
+                option.textContent = grade;
+                gradeFilter.appendChild(option);
+            });
+            
+            // Populate country filter
+            countries.forEach(country => {
+                const option = document.createElement('option');
+                option.value = country;
+                option.textContent = country;
+                countryFilter.appendChild(option);
+            });
+        }
+        
+        function displayClimbs(climbs) {
+            const container = document.getElementById('climbs-container');
+            
+            if (climbs.length === 0) {
+                container.innerHTML = '<div class="error">No boulder problems found</div>';
+                return;
+            }
+            
+            container.innerHTML = climbs.map(climb => `
+                <div class="card">
+                    <div class="climb-name">${climb.name}</div>
+                    <div class="grade-badge boulder-badge">${climb.grade}</div>
+                    <div class="text-muted mb-10">
+                        ${climb.location_country || 'Unknown'}${climb.location_area ? ' - ' + climb.location_area : ''}
+                    </div>
+                    <a href="/boulder/${encodeURIComponent(climb.name)}" class="link">View Details →</a>
+                </div>
+            `).join('');
+        }
+        
+        function filterClimbs() {
+            const gradeFilter = document.getElementById('grade-filter').value;
+            const countryFilter = document.getElementById('country-filter').value;
+            
+            let filtered = allClimbs;
+            
+            if (gradeFilter) {
+                filtered = filtered.filter(c => c.grade === gradeFilter);
+            }
+            
+            if (countryFilter) {
+                filtered = filtered.filter(c => c.location_country === countryFilter);
+            }
+            
+            displayClimbs(filtered);
+        }
+        
+        // Event listeners for filters
+        document.getElementById('grade-filter').addEventListener('change', filterClimbs);
+        document.getElementById('country-filter').addEventListener('change', filterClimbs);
+        
+        // Load climbs when page loads
+        document.addEventListener('DOMContentLoaded', loadBoulderProblems);
+    </script>
+</body>
+</html>
