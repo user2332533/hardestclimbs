@@ -1,31 +1,75 @@
 // Shared functions for all pages
 
+// Configuration constants
+export const CONFIG = {
+  CACHE_DURATIONS: {
+    SHORT: 300,   // 5 minutes
+    MEDIUM: 600, // 10 minutes
+    LONG: 1800   // 30 minutes
+  },
+  GRADE_MAPPINGS: {
+    sport: {
+      '9a+/b': '5.15a/b',
+      '9b': '5.15b',
+      '9b/+': '5.15b/c',
+      '9b+': '5.15c',
+      '9b/c': '5.15c/d',
+      '9c': '5.15d',
+      '9c/+': '5.15d/16a',
+      '9c+': '5.16a'
+    },
+    boulder: {
+      '8C': 'V15',
+      '8C/+': 'V15/V16',
+      '8C+': 'V16',
+      '8C+/9A': 'V16/V17',
+      '9A': 'V17',
+      '9A/+': 'V17/18',
+      '9A+': 'V18'
+    }
+  }
+};
+
+// Database functions for climb detail pages
+export async function getClimbByName(db, name, type) {
+  const query = `
+    WITH latest_climbs AS (
+      SELECT *, ROW_NUMBER() OVER (PARTITION BY name ORDER BY record_created DESC, hash DESC) as rn
+      FROM climbs 
+      WHERE status = 'valid' AND LOWER(name) = LOWER(?) AND climb_type = ?
+    )
+    SELECT name, climb_type, grade, location_country, location_area, location_latitude, location_longitude
+    FROM latest_climbs 
+    WHERE rn = 1
+  `;
+  
+  const result = await db.prepare(query).bind(name, type).first();
+  return result;
+}
+
+export async function getClimbAscents(db, climbName) {
+  const query = `
+    WITH latest_ascents AS (
+      SELECT a.*, c.grade, c.climb_type, c.location_country, c.location_area,
+             ROW_NUMBER() OVER (PARTITION BY a.climb_name, a.athlete_name ORDER BY a.record_created DESC, a.hash DESC) as rn
+      FROM ascents a 
+      JOIN climbs c ON a.climb_name = c.name 
+      WHERE a.status = 'valid' AND LOWER(a.climb_name) = LOWER(?)
+    )
+    SELECT * FROM latest_ascents 
+    WHERE rn = 1
+    ORDER BY date_of_ascent DESC
+  `;
+  
+  const result = await db.prepare(query).bind(climbName).all();
+  return result.results;
+}
+
 // Grade conversion function
 export function convertGrade(frenchGrade, climbType) {
   if (!frenchGrade) return frenchGrade;
   
-  const sportGrades = {
-    '9a+/b': '5.15a/b',
-    '9b': '5.15b',
-    '9b/+': '5.15b/c',
-    '9b+': '5.15c',
-    '9b/c': '5.15c/d',
-    '9c': '5.15d',
-    '9c/+': '5.15d/16a',
-    '9c+': '5.16a'
-  };
-  
-  const boulderGrades = {
-    '8C': 'V15',
-    '8C/+': 'V15/V16',
-    '8C+': 'V16',
-    '8C+/9A': 'V16/V17',
-    '9A': 'V17',
-    '9A/+': 'V17/18',
-    '9A+': 'V18'
-  };
-  
-  const mapping = climbType === 'sport' ? sportGrades : boulderGrades;
+  const mapping = CONFIG.GRADE_MAPPINGS[climbType];
   const americanGrade = mapping[frenchGrade];
   
   if (americanGrade) {
@@ -128,6 +172,46 @@ export async function getClimbsWithAscents(db, type) {
   });
   
   return climbs;
+}
+
+// Shared function for getting athlete by name with accent handling
+export async function getAthleteByName(db, name) {
+  // Try exact match first
+  const exactQuery = `
+    WITH latest_athletes AS (
+      SELECT *, ROW_NUMBER() OVER (PARTITION BY name ORDER BY record_created DESC, hash DESC) as rn
+      FROM athletes 
+      WHERE status = 'valid' AND LOWER(name) = LOWER(?)
+    )
+    SELECT name, nationality, gender, year_of_birth
+    FROM latest_athletes 
+    WHERE rn = 1
+  `;
+  
+  let result = await db.prepare(exactQuery).bind(name).first();
+  
+  // If not found, try accent-insensitive match
+  if (!result) {
+    const allQuery = `
+      WITH latest_athletes AS (
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY name ORDER BY record_created DESC, hash DESC) as rn
+        FROM athletes 
+        WHERE status = 'valid'
+      )
+      SELECT name, nationality, gender, year_of_birth
+      FROM latest_athletes 
+      WHERE rn = 1
+    `;
+    
+    const allAthletes = await db.prepare(allQuery).all();
+    const normalizedName = name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    
+    result = allAthletes.results.find(athlete => 
+      athlete.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/-/g, ' ').toLowerCase() === normalizedName
+    );
+  }
+  
+  return result;
 }
 
 // Shared database function for getting athletes with their ascents
@@ -266,7 +350,7 @@ export function generateClimbHtml(climb, type) {
     : climb.location_country || 'Unknown location';
   
   const convertedGrade = convertGrade(climb.grade, type);
-  const climbSlug = climb.name.replace(/\s+/g, '-').toLowerCase();
+  const climbSlug = climb.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '-').toLowerCase();
   return `
     <climb data-name="${climb.name.toLowerCase()}">
       <h2><a href="/${type}/${climbSlug}" class="link-light">${climb.name}</a></h2>
@@ -361,7 +445,7 @@ export function generateAthleteHtml(athlete) {
     if (ascents.length === 0) return '<li>No ascents recorded</li>';
     
     return ascents.map(ascent => {
-      const climbSlug = ascent.climb_name.replace(/\s+/g, '-').toLowerCase();
+      const climbSlug = ascent.climb_name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '-').toLowerCase();
       const climbType = ascent.climb_type === 'sport' ? 'sport' : 'boulder';
       const videoLink = ascent.web_link ? ` <a href="${ascent.web_link}" target="_blank">▶️</a>` : '';
       const ascentDate = ascent.date_of_ascent ? ` ${ascent.date_of_ascent}` : '';
@@ -370,7 +454,7 @@ export function generateAthleteHtml(athlete) {
     }).join('');
   };
   
-  const athleteSlug = athlete.name.replace(/\s+/g, '-').toLowerCase();
+  const athleteSlug = athlete.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '-').toLowerCase();
   
   return `
     <athlete data-name="${athlete.name.toLowerCase()}">
@@ -400,6 +484,164 @@ export function generateAthleteHtml(athlete) {
         </div>
       ` : ''}
     </athlete>
+  `;
+}
+
+// Location link generation function
+export function generateLocationLink(climb) {
+  const locationLink = climb.location_latitude && climb.location_longitude 
+    ? `https://www.openstreetmap.org/?mlat=${climb.location_latitude}&mlon=${climb.location_longitude}&zoom=12`
+    : '#';
+  
+  const locationText = climb.location_area && climb.location_country 
+    ? `${climb.location_area}, ${climb.location_country}`
+    : climb.location_country || 'Unknown location';
+    
+  return { link: locationLink, text: locationText };
+}
+
+// Shared detail page handler for both boulder and sport climbs
+export async function generateClimbDetailPage(context, climbType) {
+  const { env, params } = context;
+  const { slug } = params;
+  
+  try {
+    const climbName = decodeURIComponent(slug).replace(/-/g, ' ');
+    
+    // Get climb data with case-insensitive matching
+    const climb = await getClimbByName(env.DB, climbName, climbType);
+    if (!climb) {
+      return new Response(generateNotFoundPage(`${climbType === 'boulder' ? 'Boulder Problem' : 'Sport Climb'}`, climbName), { 
+        status: 404,
+        headers: { 'Content-Type': 'text/html' }
+      });
+    }
+    
+    // Get climb's ascents with case-insensitive matching
+    const ascents = await getClimbAscents(env.DB, climbName);
+    
+    // Get unique athletes
+    const uniqueAthletes = [...new Set(ascents.map(a => a.athlete_name))];
+    
+    // Get first ascent and most recent
+    const sortedAscents = ascents.filter(a => a.date_of_ascent).sort((a, b) => new Date(a.date_of_ascent) - new Date(b.date_of_ascent));
+    const firstAscent = sortedAscents[0];
+    const mostRecent = sortedAscents[sortedAscents.length - 1];
+    
+    // Generate ascents HTML
+    const ascentsHtml = ascents.map(ascent => {
+      const athleteSlug = ascent.athlete_name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '-').toLowerCase();
+      return `
+        <div class="card">
+          <div class="profile-name">
+            <a href="/athletes/${athleteSlug}" class="link">${ascent.athlete_name}</a>
+          </div>
+          <div class="text-muted mb-10">
+            ${ascent.date_of_ascent ? new Date(ascent.date_of_ascent).toLocaleDateString() : ''}
+            ${ascent.web_link ? ' • <a href="' + ascent.web_link + '" target="_blank">▶️</a>' : ''}
+          </div>
+        </div>
+      `;
+    }).join('');
+    
+    const location = generateLocationLink(climb);
+    
+    const html = generateBaseHeader(climb.name, climb.name) + 
+      `
+        <h1>${climb.name}</h1>
+        
+        <div class="card">
+          <div class="profile-header">
+            <div class="profile-info">
+              <div class="grade-badge large ${climbType}-badge">${convertGrade(climb.grade, climbType)}</div>
+              <div class="profile-details">
+                📍 <a href="${location.link}" class="link-light" target="_blank">${location.text}</a>
+              </div>
+            </div>
+          </div>
+          
+          <div class="stats">
+            <div class="stat-card">
+              <div class="stat-number">${ascents.length}</div>
+              <div class="stat-label">Total Ascents</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-number">${uniqueAthletes.length}</div>
+              <div class="stat-label">Different Athletes</div>
+            </div>
+            ${firstAscent ? `
+            <div class="stat-card">
+              <div class="stat-number">${new Date(firstAscent.date_of_ascent).getFullYear()}</div>
+              <div class="stat-label">First Ascent</div>
+            </div>
+            ` : ''}
+            ${mostRecent && mostRecent.date_of_ascent !== firstAscent?.date_of_ascent ? `
+            <div class="stat-card">
+              <div class="stat-number">${new Date(mostRecent.date_of_ascent).getFullYear()}</div>
+              <div class="stat-label">Most Recent</div>
+            </div>
+            ` : ''}
+          </div>
+        </div>
+        
+        ${ascents.length > 0 ? `
+        <div class="mb-30">
+          <h2 class="section-title">Ascents</h2>
+          <div class="grid">
+            ${ascentsHtml}
+          </div>
+        </div>
+        ` : ''}
+      ` + 
+      generateBaseFooter();
+    
+    return new Response(html, {
+      headers: { 
+        'Content-Type': 'text/html',
+        'Cache-Control': `public, max-age=${CONFIG.CACHE_DURATIONS.MEDIUM}`
+      }
+    });
+    
+  } catch (error) {
+    return new Response(generateErrorPage(error.message), {
+      status: 500,
+      headers: { 'Content-Type': 'text/html' }
+    });
+  }
+}
+
+// Shared search JavaScript generation
+export function generateSearchScript(inputId, cardSelector, noResultsMessage) {
+  return `
+        <script>
+          const searchInput = document.getElementById('${inputId}');
+          const cards = document.querySelectorAll('${cardSelector}');
+          const noResults = document.getElementById('no-results');
+          
+          searchInput.addEventListener('input', function() {
+            const searchTerm = this.value.toLowerCase().trim();
+            let visibleCount = 0;
+            
+            cards.forEach(card => {
+              const name = card.getAttribute('data-name');
+              const matches = name.includes(searchTerm);
+              
+              if (matches) {
+                card.style.display = 'block';
+                visibleCount++;
+              } else {
+                card.style.display = 'none';
+              }
+            });
+            
+            // Show/hide no results message
+            if (visibleCount === 0 && searchTerm !== '') {
+              noResults.style.display = 'block';
+            } else {
+              noResults.style.display = 'none';
+            }
+          });
+        </script>
   `;
 }
 

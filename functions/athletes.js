@@ -1,5 +1,5 @@
 // Import shared functions
-import { generateBaseHeader, generateBaseFooter, generateErrorPage, getAthletesWithAscents, generateAthleteHtml } from './shared/functions.js';
+import { generateBaseHeader, generateBaseFooter, generateErrorPage, getAthletesWithAscents, generateAthleteHtml, generateSearchScript, CONFIG } from './shared/functions.js';
 
 export async function onRequestGet(context) {
   const { env } = context;
@@ -24,42 +24,14 @@ export async function onRequestGet(context) {
           ${athletesHtml}
         </div>
         
-        <script>
-          const searchInput = document.getElementById('athlete-search');
-          const athleteCards = document.querySelectorAll('athlete[data-name]');
-          const noResults = document.getElementById('no-results');
-          
-          searchInput.addEventListener('input', function() {
-            const searchTerm = this.value.toLowerCase().trim();
-            let visibleCount = 0;
-            
-            athleteCards.forEach(card => {
-              const athleteName = card.getAttribute('data-name');
-              const matches = athleteName.includes(searchTerm);
-              
-              if (matches) {
-                card.style.display = 'block';
-                visibleCount++;
-              } else {
-                card.style.display = 'none';
-              }
-            });
-            
-            // Show/hide no results message
-            if (visibleCount === 0 && searchTerm !== '') {
-              noResults.style.display = 'block';
-            } else {
-              noResults.style.display = 'none';
-            }
-          });
-        </script>
+        ${generateSearchScript('athlete-search', 'athlete[data-name]', 'No athletes found matching your search.')}
       ` + 
       generateBaseFooter();
     
     return new Response(html, {
       headers: { 
         'Content-Type': 'text/html',
-        'Cache-Control': 'public, max-age=600' // 10 minutes
+        'Cache-Control': `public, max-age=${CONFIG.CACHE_DURATIONS.MEDIUM}`
       }
     });
     

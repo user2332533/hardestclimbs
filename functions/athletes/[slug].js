@@ -1,19 +1,5 @@
-// Database functions for athlete detail page
-async function getAthleteByName(db, name) {
-  const query = `
-    WITH latest_athletes AS (
-      SELECT *, ROW_NUMBER() OVER (PARTITION BY name ORDER BY record_created DESC, hash DESC) as rn
-      FROM athletes 
-      WHERE status = 'valid' AND LOWER(name) = LOWER(?)
-    )
-    SELECT name, nationality, gender, year_of_birth
-    FROM latest_athletes 
-    WHERE rn = 1
-  `;
-  
-  const result = await db.prepare(query).bind(name).first();
-  return result;
-}
+// Import shared functions
+import { generateBaseHeader, generateBaseFooter, generateErrorPage, generateNotFoundPage, convertGrade, generateLocationLink, CONFIG, getAthleteByName } from '../shared/functions.js';
 
 async function getAthleteAscents(db, athleteName) {
   const query = `
@@ -33,16 +19,13 @@ async function getAthleteAscents(db, athleteName) {
   return result.results;
 }
 
-// Import shared functions
-import { generateBaseHeader, generateBaseFooter, generateErrorPage, generateNotFoundPage, convertGrade } from '../shared/functions.js';
-
 export async function onRequestGet(context) {
   const { env, params } = context;
   const { slug } = params; // e.g., "adam-ondra"
   
   try {
-    // Convert slug back to name (replace hyphens with spaces)
-    const athleteName = slug.replace(/-/g, ' ');
+    // Convert slug back to name (decode URL then replace hyphens with spaces)
+    const athleteName = decodeURIComponent(slug).replace(/-/g, ' ');
     
     // Get athlete data with case-insensitive matching
     const athlete = await getAthleteByName(env.DB, athleteName);
@@ -54,38 +37,30 @@ export async function onRequestGet(context) {
     }
     
     // Get athlete's ascents with case-insensitive matching
-    const ascents = await getAthleteAscents(env.DB, athleteName);
+    const ascents = await getAthleteAscents(env.DB, athlete.name);
     
-    // Calculate statistics
-    const sportAscents = ascents.filter(a => a.climb_type === 'sport');
-    const boulderAscents = ascents.filter(a => a.climb_type === 'boulder');
-    const hardestSport = sportAscents.sort((a, b) => b.grade.localeCompare(a.grade))[0];
-    const hardestBoulder = boulderAscents.sort((a, b) => b.grade.localeCompare(a.grade))[0];
+    // Separate ascents by type and sort by date
+    const sportAscents = ascents.filter(a => a.climb_type === 'sport').sort((a, b) => new Date(b.date_of_ascent || '9999') - new Date(a.date_of_ascent || '9999'));
+    const boulderAscents = ascents.filter(a => a.climb_type === 'boulder').sort((a, b) => new Date(b.date_of_ascent || '9999') - new Date(a.date_of_ascent || '9999'));
     
-    // Separate and sort ascents by type
-    const sportAscentsSorted = sportAscents.sort((a, b) => {
-      // First by descending grade
-      const gradeComparison = b.grade.localeCompare(a.grade);
-      if (gradeComparison !== 0) return gradeComparison;
-      // Then by ascending ascent date
-      if (!a.date_of_ascent) return 1;
-      if (!b.date_of_ascent) return -1;
-      return new Date(a.date_of_ascent) - new Date(b.date_of_ascent);
+    // Get hardest ascents for stats
+    const sportAscentsSorted = [...sportAscents].sort((a, b) => {
+      const gradeOrder = ['9a+', '9a', '9a/b', '9a+/b', '9b', '9b/+', '9b+', '9b/c', '9c', '9c/+', '9c+'];
+      const aIndex = gradeOrder.indexOf(a.grade);
+      const bIndex = gradeOrder.indexOf(b.grade);
+      return bIndex - aIndex;
     });
     
-    const boulderAscentsSorted = boulderAscents.sort((a, b) => {
-      // First by descending grade
-      const gradeComparison = b.grade.localeCompare(a.grade);
-      if (gradeComparison !== 0) return gradeComparison;
-      // Then by ascending ascent date
-      if (!a.date_of_ascent) return 1;
-      if (!b.date_of_ascent) return -1;
-      return new Date(a.date_of_ascent) - new Date(b.date_of_ascent);
+    const boulderAscentsSorted = [...boulderAscents].sort((a, b) => {
+      const gradeOrder = ['8B+', '8C', '8C/+', '8C+', '8C+/9A', '9A', '9A/+', '9A+'];
+      const aIndex = gradeOrder.indexOf(a.grade);
+      const bIndex = gradeOrder.indexOf(b.grade);
+      return bIndex - aIndex;
     });
     
     // Generate sport ascents HTML
     const sportAscentsHtml = sportAscentsSorted.map(ascent => {
-      const climbSlug = ascent.climb_name.replace(/\s+/g, '-').toLowerCase();
+      const climbSlug = ascent.climb_name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '-').toLowerCase();
       const videoLink = ascent.web_link ? ` <a href="${ascent.web_link}" target="_blank">▶️</a>` : '';
       return `
         <div class="card">
@@ -93,10 +68,8 @@ export async function onRequestGet(context) {
             <a href="/${ascent.climb_type}/${climbSlug}" class="link">${ascent.climb_name}</a>${videoLink}
           </div>
           <div class="text-muted mb-10">
-            <span class="grade-badge ${ascent.climb_type}-badge">${convertGrade(ascent.grade, ascent.climb_type)}</span>
-            ${ascent.location_area ? ' • ' + ascent.location_area : ''}
-            ${ascent.location_country ? ' • ' + ascent.location_country : ''}
-            ${ascent.date_of_ascent ? ' • ' + ascent.date_of_ascent : ''}
+            <span class="grade-badge sport-badge">${convertGrade(ascent.grade, 'sport')}</span>
+            ${ascent.date_of_ascent ? new Date(ascent.date_of_ascent).toLocaleDateString() : ''}
           </div>
         </div>
       `;
@@ -104,7 +77,7 @@ export async function onRequestGet(context) {
     
     // Generate boulder ascents HTML
     const boulderAscentsHtml = boulderAscentsSorted.map(ascent => {
-      const climbSlug = ascent.climb_name.replace(/\s+/g, '-').toLowerCase();
+      const climbSlug = ascent.climb_name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '-').toLowerCase();
       const videoLink = ascent.web_link ? ` <a href="${ascent.web_link}" target="_blank">▶️</a>` : '';
       return `
         <div class="card">
@@ -112,10 +85,8 @@ export async function onRequestGet(context) {
             <a href="/${ascent.climb_type}/${climbSlug}" class="link">${ascent.climb_name}</a>${videoLink}
           </div>
           <div class="text-muted mb-10">
-            <span class="grade-badge ${ascent.climb_type}-badge">${convertGrade(ascent.grade, ascent.climb_type)}</span>
-            ${ascent.location_area ? ' • ' + ascent.location_area : ''}
-            ${ascent.location_country ? ' • ' + ascent.location_country : ''}
-            ${ascent.date_of_ascent ? ' • ' + ascent.date_of_ascent : ''}
+            <span class="grade-badge boulder-badge">${convertGrade(ascent.grade, 'boulder')}</span>
+            ${ascent.date_of_ascent ? new Date(ascent.date_of_ascent).toLocaleDateString() : ''}
           </div>
         </div>
       `;
@@ -129,9 +100,9 @@ export async function onRequestGet(context) {
           <div class="profile-header">
             <div class="profile-info">
               <div class="profile-details">
-                ${athlete.nationality ? '🏳️ ' + athlete.nationality : ''}
-                ${athlete.gender ? ' • ' + athlete.gender : ''}
-                ${athlete.year_of_birth ? ' • Born ' + athlete.year_of_birth : ''}
+                🏳️ ${athlete.nationality || 'Unknown'}<br>
+                👤 ${athlete.gender || 'Unknown'}<br>
+                🎂 ${athlete.year_of_birth || 'Unknown'}
               </div>
             </div>
           </div>
@@ -149,24 +120,12 @@ export async function onRequestGet(context) {
               <div class="stat-number">${boulderAscents.length}</div>
               <div class="stat-label">Boulders</div>
             </div>
-            ${hardestSport ? `
-            <div class="stat-card">
-              <div class="stat-number">${convertGrade(hardestSport.grade, 'sport')}</div>
-              <div class="stat-label">Hardest Sport</div>
-            </div>
-            ` : ''}
-            ${hardestBoulder ? `
-            <div class="stat-card">
-              <div class="stat-number">${convertGrade(hardestBoulder.grade, 'boulder')}</div>
-              <div class="stat-label">Hardest Boulder</div>
-            </div>
-            ` : ''}
           </div>
         </div>
         
         ${sportAscents.length > 0 ? `
         <div class="mb-30">
-          <h2 class="section-title">Sport Climb Ascents</h2>
+          <h2 class="section-title">Sport Climbing</h2>
           <div class="grid">
             ${sportAscentsHtml}
           </div>
@@ -175,7 +134,7 @@ export async function onRequestGet(context) {
         
         ${boulderAscents.length > 0 ? `
         <div class="mb-30">
-          <h2 class="section-title">Boulder Ascents</h2>
+          <h2 class="section-title">Bouldering</h2>
           <div class="grid">
             ${boulderAscentsHtml}
           </div>
@@ -187,7 +146,7 @@ export async function onRequestGet(context) {
     return new Response(html, {
       headers: { 
         'Content-Type': 'text/html',
-        'Cache-Control': 'public, max-age=300' // 5 minutes
+        'Cache-Control': `public, max-age=${CONFIG.CACHE_DURATIONS.MEDIUM}`
       }
     });
     

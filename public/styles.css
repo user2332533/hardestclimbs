@@ -239,7 +239,8 @@ main h2 {
 
 /* Cards */
 climb,
-athlete {
+athlete,
+.card {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -249,7 +250,8 @@ athlete {
 }
 
 climb:hover,
-athlete:hover {
+athlete:hover,
+.card:hover {
   border-color: var(--primary-color);
   box-shadow: var(--shadow-md);
   transform: translateY(-2px);
@@ -397,26 +399,14 @@ athlete li:first-child {
   color: var(--text-secondary);
 }
 
-/* Utility */
-.text-muted {
-  color: var(--text-muted);
-}
+
 
 /* Detail Page Components */
 
-/* Cards */
+/* Card specific styles */
 .card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
   padding: 32px;
   margin-bottom: 24px;
-  box-shadow: var(--shadow-sm);
-  transition: var(--transition);
-}
-
-.card:hover {
-  box-shadow: var(--shadow-md);
 }
 
 /* Profile Header */
@@ -669,11 +659,6 @@ athlete li:first-child {
   .grid {
     grid-template-columns: 1fr;
     gap: 16px;
-  }
-  
-  main h1 {
-    font-size: 1.75rem;
-    margin: 0 0 32px 0;
   }
   
   .section-title {

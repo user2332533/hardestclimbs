@@ -1,5 +1,5 @@
 // Import shared functions
-import { generateBaseHeader, generateBaseFooter, generateErrorPage, getClimbsWithAscents, generateClimbHtml } from './shared/functions.js';
+import { generateBaseHeader, generateBaseFooter, generateErrorPage, getClimbsWithAscents, generateClimbHtml, generateSearchScript, CONFIG } from './shared/functions.js';
 
 
 
@@ -26,42 +26,14 @@ export async function onRequestGet(context) {
           ${climbsHtml}
         </div>
         
-        <script>
-          const searchInput = document.getElementById('climb-search');
-          const climbCards = document.querySelectorAll('climb[data-name]');
-          const noResults = document.getElementById('no-results');
-          
-          searchInput.addEventListener('input', function() {
-            const searchTerm = this.value.toLowerCase().trim();
-            let visibleCount = 0;
-            
-            climbCards.forEach(card => {
-              const climbName = card.getAttribute('data-name');
-              const matches = climbName.includes(searchTerm);
-              
-              if (matches) {
-                card.style.display = 'block';
-                visibleCount++;
-              } else {
-                card.style.display = 'none';
-              }
-            });
-            
-            // Show/hide no results message
-            if (visibleCount === 0 && searchTerm !== '') {
-              noResults.style.display = 'block';
-            } else {
-              noResults.style.display = 'none';
-            }
-          });
-        </script>
+        ${generateSearchScript('climb-search', 'climb[data-name]', 'No sport climbs found matching your search.')}
       ` + 
       generateBaseFooter();
     
     return new Response(html, {
       headers: { 
         'Content-Type': 'text/html',
-        'Cache-Control': 'public, max-age=300' // 5 minutes
+        'Cache-Control': `public, max-age=${CONFIG.CACHE_DURATIONS.SHORT}`
       }
     });
     
