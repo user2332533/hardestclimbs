@@ -385,7 +385,6 @@ export function generateBaseHeader(title, currentPage) {
                         <h1><a href="/">Hardest Climbs</a></h1>
                     </div>
                     <nav>
-                        <a href="/" class="${currentPage === 'home' ? 'current' : ''}">Home</a>
                         <a href="/sport" class="${currentPage === 'sport' ? 'current' : ''}">Sport Climbs</a>
                         <a href="/boulder" class="${currentPage === 'boulder' ? 'current' : ''}">Boulders</a>
                         <a href="/athletes" class="${currentPage === 'athletes' ? 'current' : ''}">Athletes</a>
@@ -653,4 +652,53 @@ export function generateNotFoundPage(type, name) {
             <p><a href="/${type.toLowerCase()}s">← Back to ${type}s</a></p>
         </div>
       ` + generateBaseFooter();
+}
+
+// Export functions for clean data dumps
+export async function getLatestAthletes(db) {
+  const query = `
+    WITH latest_athletes AS (
+      SELECT *, ROW_NUMBER() OVER (PARTITION BY name ORDER BY record_created DESC, hash DESC) as rn
+      FROM athletes 
+      WHERE status = 'valid'
+    )
+    SELECT name, nationality, gender, year_of_birth
+    FROM latest_athletes 
+    WHERE rn = 1
+    ORDER BY name
+  `;
+  const result = await db.prepare(query).all();
+  return result.results;
+}
+
+export async function getLatestClimbs(db) {
+  const query = `
+    WITH latest_climbs AS (
+      SELECT *, ROW_NUMBER() OVER (PARTITION BY name ORDER BY record_created DESC, hash DESC) as rn
+      FROM climbs 
+      WHERE status = 'valid'
+    )
+    SELECT name, climb_type, grade, location_country, location_area, location_latitude, location_longitude
+    FROM latest_climbs 
+    WHERE rn = 1
+    ORDER BY climb_type, grade DESC, name
+  `;
+  const result = await db.prepare(query).all();
+  return result.results;
+}
+
+export async function getLatestAscents(db) {
+  const query = `
+    WITH latest_ascents AS (
+      SELECT *, ROW_NUMBER() OVER (PARTITION BY climb_name, athlete_name ORDER BY record_created DESC, hash DESC) as rn
+      FROM ascents 
+      WHERE status = 'valid'
+    )
+    SELECT climb_name, athlete_name, date_of_ascent, web_link
+    FROM latest_ascents 
+    WHERE rn = 1
+    ORDER BY date_of_ascent DESC
+  `;
+  const result = await db.prepare(query).all();
+  return result.results;
 }

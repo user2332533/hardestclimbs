@@ -1,7 +1,7 @@
 # Agent Guidelines
 
 ## Build 
-- We test remotely with npx wrangler pages deploy public --project-name=climbing-database
+- We test remotely with npx wrangler pages deploy public --project-name=climbing-database --commit-dirty=true
 - No local testing
 
 ## Database Schema
