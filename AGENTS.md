@@ -1,11 +1,8 @@
 # Agent Guidelines
 
-## Build Commands
-- Build: `yarn build`
-- Test: `yarn test`
-- Single test: `yarn test testName`
-- Lint: `yarn lint`
-- Type check: `yarn typecheck`
+## Build 
+- We test remotely with npx wrangler pages deploy public --project-name=climbing-database
+- No local testing
 
 ## Database Schema
 - Uses composite primary keys (name + record_created) for versioning

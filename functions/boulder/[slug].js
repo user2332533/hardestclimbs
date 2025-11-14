@@ -1,4 +1,4 @@
-// Database functions for climb detail page
+// Database functions for boulder detail page
 async function getClimbByName(db, name, type) {
   const query = `
     WITH latest_climbs AS (
@@ -38,15 +38,15 @@ import { generateBaseHeader, generateBaseFooter, generateErrorPage, generateNotF
 
 export async function onRequestGet(context) {
   const { env, params } = context;
-  const { slug } = params; // e.g., "silence"
+  const { slug } = params; // e.g., "burden-of-dreams"
   
   try {
     const climbName = slug.replace(/-/g, ' ');
     
     // Get climb data with case-insensitive matching
-    const climb = await getClimbByName(env.DB, climbName, 'sport');
+    const climb = await getClimbByName(env.DB, climbName, 'boulder');
     if (!climb) {
-      return new Response(generateNotFoundPage('Sport Climb', climbName), { 
+      return new Response(generateNotFoundPage('Boulder Problem', climbName), { 
         status: 404,
         headers: { 'Content-Type': 'text/html' }
       });
@@ -94,7 +94,7 @@ export async function onRequestGet(context) {
         <div class="card">
           <div class="profile-header">
             <div class="profile-info">
-              <div class="grade-badge large sport-badge">${convertGrade(climb.grade, 'sport')}</div>
+              <div class="grade-badge large boulder-badge">${convertGrade(climb.grade, 'boulder')}</div>
               <div class="profile-details">
                 📍 <a href="${locationLink}" class="link-light" target="_blank">${locationText}</a>
               </div>

@@ -81,6 +81,7 @@ export async function getClimbsWithAscents(db, type) {
       ON lc.name = la.climb_name
     ORDER BY 
       lc.grade DESC, 
+      CASE WHEN la.date_of_first_ascent IS NULL THEN 1 ELSE 0 END,
       la.date_of_first_ascent,
       la.date_of_ascent
   `;
@@ -269,12 +270,16 @@ export function generateClimbHtml(climb, type) {
   return `
     <climb data-name="${climb.name.toLowerCase()}">
       <h2><a href="/${type}/${climbSlug}" class="link-light">${climb.name}</a></h2>
-      <b>Grade:</b> ${convertedGrade}<br>
-      <b>Location:</b> <a href="${locationLink}" class="link-light" target="_blank">${locationText}</a><br>
-      <b>Ascents:</b>
-      <ul>
-        ${ascentsList || '<li>No ascents recorded</li>'}
-      </ul>
+      <div class="climb-details">
+        <b>Grade:</b> ${convertedGrade}<br>
+        <b>Location:</b> <a href="${locationLink}" class="link-light" target="_blank">${locationText}</a><br>
+      </div>
+      <div class="ascents-section">
+        <h3>Ascents</h3>
+        <ul>
+          ${ascentsList || '<li>No ascents recorded</li>'}
+        </ul>
+      </div>
     </climb>
   `;
 }
@@ -285,24 +290,25 @@ export function generateBaseHeader(title, currentPage) {
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>${title} - Hardest Climbs in the World</title>
+        <title>${title} - Hardest Climbs</title>
         <link rel="stylesheet" href="/styles.css">
     </head>
     <body>
         <div class="container">
             <header>
-                <div>
-                    <h1><a href="/">Hardest Climbs in the World</a></h1>
-                    ${currentPage !== 'home' ? `<h2>${currentPage}</h2>` : ''}
+                <div class="header-content">
+                    <div class="header-title">
+                        <h1><a href="/">Hardest Climbs</a></h1>
+                    </div>
+                    <nav>
+                        <a href="/" class="${currentPage === 'home' ? 'current' : ''}">Home</a>
+                        <a href="/sport" class="${currentPage === 'sport' ? 'current' : ''}">Sport Climbs</a>
+                        <a href="/boulder" class="${currentPage === 'boulder' ? 'current' : ''}">Boulders</a>
+                        <a href="/athletes" class="${currentPage === 'athletes' ? 'current' : ''}">Athletes</a>
+                        <a href="/export">Export</a>
+                    </nav>
                 </div>
             </header>
-            
-            <nav>
-                <a href="/" class="${currentPage === 'home' ? 'current' : ''}">Home</a>
-                <a href="/sport" class="${currentPage === 'sport' ? 'current' : ''}">Sport Climbs</a>
-                <a href="/boulder" class="${currentPage === 'boulder' ? 'current' : ''}">Boulders</a>
-                <a href="/athletes" class="${currentPage === 'athletes' ? 'current' : ''}">Athletes</a>
-            </nav>
             
             <main>
   `;
@@ -311,10 +317,6 @@ export function generateBaseHeader(title, currentPage) {
 export function generateBaseFooter() {
   return `
             </main>
-            
-            <footer>
-                <a href="/export">📥 Export</a>
-            </footer>
         </div>
         
         <script>
@@ -335,44 +337,13 @@ export function generateBaseFooter() {
 }
 
 export function generateErrorPage(message) {
-  return `
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Error - Hardest Climbs in the World</title>
-        <link rel="stylesheet" href="/styles.css">
-    </head>
-    <body>
-        <div class="container">
-            <header>
-                <h1><a href="/">Hardest Climbs in the World</a></h1>
-            </header>
-            
-            <nav>
-                <a href="/">Home</a>
-                <a href="/sport">Sport Climbs</a>
-                <a href="/boulder">Boulders</a>
-                <a href="/athletes">Athletes</a>
-            </nav>
-            
-            <main>
-                <div class="error">
-                    <h2>Temporary Error</h2>
-                    <p>${message}</p>
-                    <p>Please try again later or <a href="/">return to home</a>.</p>
-                </div>
-            </main>
-            
-            <footer>
-                <p>Spotted a mistake or want to add some information? 
-                <a href="https://github.com" target="_blank">This way!</a></p>
-            </footer>
+  return generateBaseHeader('Error', 'Error') + `
+        <div class="error">
+            <h2>Temporary Error</h2>
+            <p>${message}</p>
+            <p>Please try again later or <a href="/">return to home</a>.</p>
         </div>
-    </body>
-    </html>
-  `;
+      ` + generateBaseFooter();
 }
 
 // Shared HTML generation function for athletes
@@ -433,42 +404,11 @@ export function generateAthleteHtml(athlete) {
 }
 
 export function generateNotFoundPage(type, name) {
-  return `
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Not Found - Hardest Climbs in the World</title>
-        <link rel="stylesheet" href="/styles.css">
-    </head>
-    <body>
-        <div class="container">
-            <header>
-                <h1><a href="/">Hardest Climbs in the World</a></h1>
-            </header>
-            
-            <nav>
-                <a href="/">Home</a>
-                <a href="/sport">Sport Climbs</a>
-                <a href="/boulder">Boulders</a>
-                <a href="/athletes">Athletes</a>
-            </nav>
-            
-            <main>
-                <div class="error">
-                    <h2>${type} Not Found</h2>
-                    <p>The ${type.toLowerCase()} "${name}" was not found in our database.</p>
-                    <p><a href="/${type.toLowerCase()}s">← Back to ${type}s</a></p>
-                </div>
-            </main>
-            
-            <footer>
-                <p>Spotted a mistake or want to add some information? 
-                <a href="https://github.com" target="_blank">This way!</a></p>
-            </footer>
+  return generateBaseHeader('Not Found', 'Not Found') + `
+        <div class="error">
+            <h2>${type} Not Found</h2>
+            <p>The ${type.toLowerCase()} "${name}" was not found in our database.</p>
+            <p><a href="/${type.toLowerCase()}s">← Back to ${type}s</a></p>
         </div>
-    </body>
-    </html>
-  `;
+      ` + generateBaseFooter();
 }

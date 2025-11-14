@@ -62,27 +62,68 @@ export async function onRequestGet(context) {
     const hardestSport = sportAscents.sort((a, b) => b.grade.localeCompare(a.grade))[0];
     const hardestBoulder = boulderAscents.sort((a, b) => b.grade.localeCompare(a.grade))[0];
     
-    // Generate ascents HTML
-    const ascentsHtml = ascents.map(ascent => {
+    // Separate and sort ascents by type
+    const sportAscentsSorted = sportAscents.sort((a, b) => {
+      // First by descending grade
+      const gradeComparison = b.grade.localeCompare(a.grade);
+      if (gradeComparison !== 0) return gradeComparison;
+      // Then by ascending ascent date
+      if (!a.date_of_ascent) return 1;
+      if (!b.date_of_ascent) return -1;
+      return new Date(a.date_of_ascent) - new Date(b.date_of_ascent);
+    });
+    
+    const boulderAscentsSorted = boulderAscents.sort((a, b) => {
+      // First by descending grade
+      const gradeComparison = b.grade.localeCompare(a.grade);
+      if (gradeComparison !== 0) return gradeComparison;
+      // Then by ascending ascent date
+      if (!a.date_of_ascent) return 1;
+      if (!b.date_of_ascent) return -1;
+      return new Date(a.date_of_ascent) - new Date(b.date_of_ascent);
+    });
+    
+    // Generate sport ascents HTML
+    const sportAscentsHtml = sportAscentsSorted.map(ascent => {
       const climbSlug = ascent.climb_name.replace(/\s+/g, '-').toLowerCase();
+      const videoLink = ascent.web_link ? ` <a href="${ascent.web_link}" target="_blank">▶️</a>` : '';
       return `
         <div class="card">
-          <div class="climb-name">${ascent.climb_name}</div>
+          <div class="climb-name">
+            <a href="/${ascent.climb_type}/${climbSlug}" class="link">${ascent.climb_name}</a>${videoLink}
+          </div>
           <div class="text-muted mb-10">
             <span class="grade-badge ${ascent.climb_type}-badge">${convertGrade(ascent.grade, ascent.climb_type)}</span>
-            ${ascent.climb_type === 'sport' ? 'Sport' : 'Boulder'}
             ${ascent.location_area ? ' • ' + ascent.location_area : ''}
             ${ascent.location_country ? ' • ' + ascent.location_country : ''}
-            ${ascent.date_of_ascent ? ' • ' + new Date(ascent.date_of_ascent).getFullYear() : ''}
+            ${ascent.date_of_ascent ? ' • ' + ascent.date_of_ascent : ''}
           </div>
-          <a href="/${ascent.climb_type}/${climbSlug}" class="link">View Climb →</a>
+        </div>
+      `;
+    }).join('');
+    
+    // Generate boulder ascents HTML
+    const boulderAscentsHtml = boulderAscentsSorted.map(ascent => {
+      const climbSlug = ascent.climb_name.replace(/\s+/g, '-').toLowerCase();
+      const videoLink = ascent.web_link ? ` <a href="${ascent.web_link}" target="_blank">▶️</a>` : '';
+      return `
+        <div class="card">
+          <div class="climb-name">
+            <a href="/${ascent.climb_type}/${climbSlug}" class="link">${ascent.climb_name}</a>${videoLink}
+          </div>
+          <div class="text-muted mb-10">
+            <span class="grade-badge ${ascent.climb_type}-badge">${convertGrade(ascent.grade, ascent.climb_type)}</span>
+            ${ascent.location_area ? ' • ' + ascent.location_area : ''}
+            ${ascent.location_country ? ' • ' + ascent.location_country : ''}
+            ${ascent.date_of_ascent ? ' • ' + ascent.date_of_ascent : ''}
+          </div>
         </div>
       `;
     }).join('');
     
     const html = generateBaseHeader(athlete.name, athlete.name) + 
       `
-        <a href="/athletes" class="back-link">← Back to Athletes</a>
+        <h1>${athlete.name}</h1>
         
         <div class="card">
           <div class="profile-header">
@@ -123,11 +164,20 @@ export async function onRequestGet(context) {
           </div>
         </div>
         
-        ${ascents.length > 0 ? `
+        ${sportAscents.length > 0 ? `
         <div class="mb-30">
-          <h2 class="section-title">Notable Ascents</h2>
+          <h2 class="section-title">Sport Climb Ascents</h2>
           <div class="grid">
-            ${ascentsHtml}
+            ${sportAscentsHtml}
+          </div>
+        </div>
+        ` : ''}
+        
+        ${boulderAscents.length > 0 ? `
+        <div class="mb-30">
+          <h2 class="section-title">Boulder Ascents</h2>
+          <div class="grid">
+            ${boulderAscentsHtml}
           </div>
         </div>
         ` : ''}

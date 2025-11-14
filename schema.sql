@@ -36,9 +36,7 @@ CREATE TABLE ascents (
   record_created TEXT DEFAULT CURRENT_TIMESTAMP,
   status TEXT NOT NULL DEFAULT 'valid' CHECK (status IN ('valid', 'pending', 'rejected')),
   hash TEXT,
-  PRIMARY KEY (climb_name, athlete_name, record_created),
-  FOREIGN KEY (climb_name) REFERENCES climbs(name),
-  FOREIGN KEY (athlete_name) REFERENCES athletes(name)
+  PRIMARY KEY (climb_name, athlete_name, record_created)
 );
 
 -- Indexes for performance
@@ -49,3 +47,6 @@ CREATE INDEX idx_athletes_status ON athletes(status);
 CREATE INDEX idx_athletes_name_created ON athletes(name, record_created);
 CREATE INDEX idx_climbs_name_created ON climbs(name, record_created);
 CREATE INDEX idx_ascents_name_created ON ascents(climb_name, athlete_name, record_created);
+
+-- Unique indexes for data integrity
+CREATE UNIQUE INDEX idx_athletes_name_unique ON athletes(name);
