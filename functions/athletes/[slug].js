@@ -94,7 +94,10 @@ export async function onRequestGet(context) {
     
     const html = generateBaseHeader(athlete.name, athlete.name) + 
       `
-        <h1>${athlete.name}</h1>
+        <div class="page-header">
+          <h1>${athlete.name}</h1>
+          <a href="/submit?athlete=${encodeURIComponent(athlete.name)}" class="btn-add">+</a>
+        </div>
         
         <div class="card">
           <div class="profile-header">

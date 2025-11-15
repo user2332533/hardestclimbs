@@ -11,9 +11,12 @@ export async function onRequestGet(context) {
     
     const climbsHtml = climbs.map(climb => generateClimbHtml(climb, 'sport')).join('');
     
-    const html = generateBaseHeader('Sport Climbing', 'sport') + 
+const html = generateBaseHeader('Sport Climbing', 'sport') + 
       `
-        <h1>Sport Climbs</h1>
+        <div class="page-header">
+          <h1>Sport Climbs</h1>
+          <a href="/submit" class="btn-add">+</a>
+        </div>
         <div class="search-container">
           <input type="text" id="climb-search" placeholder="Search sport climbs by name..." autocomplete="off">
         </div>

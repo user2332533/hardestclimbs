@@ -11,7 +11,10 @@ export async function onRequestGet(context) {
     
     const html = generateBaseHeader('Athletes', 'athletes') + 
       `
-        <h1>Athletes</h1>
+        <div class="page-header">
+          <h1>Athletes</h1>
+          <a href="/submit" class="btn-add">+</a>
+        </div>
         <div class="search-container">
           <input type="text" id="athlete-search" placeholder="Search athletes by name..." autocomplete="off">
         </div>

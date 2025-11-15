@@ -547,7 +547,10 @@ export async function generateClimbDetailPage(context, climbType) {
     
     const html = generateBaseHeader(climb.name, climb.name) + 
       `
-        <h1>${climb.name}</h1>
+        <div class="page-header">
+          <h1>${climb.name}</h1>
+          <a href="/submit?climb=${encodeURIComponent(climb.name)}" class="btn-add">+</a>
+        </div>
         
         <div class="card">
           <div class="profile-header">
@@ -701,4 +704,232 @@ export async function getLatestAscents(db) {
   `;
   const result = await db.prepare(query).all();
   return result.results;
+}
+
+// Submission system helper functions
+export async function getValidAthletes(db) {
+  const query = `
+    WITH latest_athletes AS (
+      SELECT *, ROW_NUMBER() OVER (PARTITION BY name ORDER BY record_created DESC, hash DESC) as rn
+      FROM athletes 
+      WHERE status = 'valid'
+    )
+    SELECT name FROM latest_athletes 
+    WHERE rn = 1
+    ORDER BY name
+  `;
+  const result = await db.prepare(query).all();
+  return result.results.map(row => row.name);
+}
+
+export async function getValidClimbs(db) {
+  const query = `
+    WITH latest_climbs AS (
+      SELECT *, ROW_NUMBER() OVER (PARTITION BY name ORDER BY record_created DESC, hash DESC) as rn
+      FROM climbs 
+      WHERE status = 'valid'
+    )
+    SELECT name FROM latest_climbs 
+    WHERE rn = 1
+    ORDER BY name
+  `;
+  const result = await db.prepare(query).all();
+  return result.results.map(row => row.name);
+}
+
+export function generateHash() {
+  return crypto.randomUUID();
+}
+
+export async function submitNewAscent(db, data) {
+  const { athleteName, climbName, dateOfAscent, webLink, nationality, gender, yearOfBirth, climbType, grade, locationCountry, locationArea, locationLatitude, locationLongitude } = data;
+  const results = { athleteHash: null, climbHash: null, ascentHash: null };
+  
+  try {
+    // Check if athlete exists and is valid
+    const athleteQuery = `
+      WITH latest_athletes AS (
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY name ORDER BY record_created DESC, hash DESC) as rn
+        FROM athletes 
+        WHERE name = ? AND status = 'valid'
+      )
+      SELECT * FROM latest_athletes 
+      WHERE rn = 1
+    `;
+    const existingAthlete = await db.prepare(athleteQuery).bind(athleteName).first();
+    
+    // If athlete doesn't exist, create pending entry
+    if (!existingAthlete) {
+      const athleteHash = generateHash();
+      const insertAthlete = `
+        INSERT INTO athletes (name, nationality, gender, year_of_birth, status, hash)
+        VALUES (?, ?, ?, ?, 'pending', ?)
+      `;
+      await db.prepare(insertAthlete).bind(athleteName, nationality, gender, yearOfBirth, athleteHash).run();
+      results.athleteHash = athleteHash;
+    }
+    
+    // Check if climb exists and is valid
+    const climbQuery = `
+      WITH latest_climbs AS (
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY name ORDER BY record_created DESC, hash DESC) as rn
+        FROM climbs 
+        WHERE name = ? AND status = 'valid'
+      )
+      SELECT * FROM latest_climbs 
+      WHERE rn = 1
+    `;
+    const existingClimb = await db.prepare(climbQuery).bind(climbName).first();
+    
+    // If climb doesn't exist, create pending entry
+    if (!existingClimb) {
+      const climbHash = generateHash();
+      const insertClimb = `
+        INSERT INTO climbs (name, climb_type, grade, location_country, location_area, location_latitude, location_longitude, status, hash)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+      `;
+      await db.prepare(insertClimb).bind(climbName, climbType, grade, locationCountry, locationArea, locationLatitude, locationLongitude, climbHash).run();
+      results.climbHash = climbHash;
+    }
+    
+    // Always create ascent with pending status
+    const ascentHash = generateHash();
+    const insertAscent = `
+      INSERT INTO ascents (climb_name, athlete_name, date_of_ascent, web_link, status, hash)
+      VALUES (?, ?, ?, ?, 'pending', ?)
+    `;
+    await db.prepare(insertAscent).bind(climbName, athleteName, dateOfAscent, webLink, ascentHash).run();
+    results.ascentHash = ascentHash;
+    
+    return results;
+  } catch (error) {
+    throw new Error(`Failed to submit ascent: ${error.message}`);
+  }
+}
+
+export async function getPendingSubmissions(db) {
+  const submissions = { athletes: [], climbs: [], ascents: [] };
+  
+  try {
+    // Get pending athletes
+    const athleteQuery = `
+      SELECT name, nationality, gender, year_of_birth, record_created, hash
+      FROM athletes 
+      WHERE status = 'pending'
+      ORDER BY record_created DESC
+    `;
+    const athleteResult = await db.prepare(athleteQuery).all();
+    submissions.athletes = athleteResult.results;
+    
+    // Get pending climbs
+    const climbQuery = `
+      SELECT name, climb_type, grade, location_country, location_area, location_latitude, location_longitude, record_created, hash
+      FROM climbs 
+      WHERE status = 'pending'
+      ORDER BY record_created DESC
+    `;
+    const climbResult = await db.prepare(climbQuery).all();
+    submissions.climbs = climbResult.results;
+    
+    // Get pending ascents with approval status
+    const ascentQuery = `
+      SELECT climb_name, athlete_name, date_of_ascent, web_link, record_created, hash
+      FROM ascents 
+      WHERE status = 'pending'
+      ORDER BY record_created DESC
+    `;
+    const ascentResult = await db.prepare(ascentQuery).all();
+    
+    // Check approval status for each ascent
+    const ascentsWithApproval = await Promise.all(
+      ascentResult.results.map(async (ascent) => {
+        const approvalCheck = await canApproveAscent(db, ascent.hash);
+        return {
+          ...ascent,
+          canApprove: approvalCheck.canApprove,
+          approvalReason: approvalCheck.reason
+        };
+      })
+    );
+    
+    submissions.ascents = ascentsWithApproval;
+    
+    return submissions;
+  } catch (error) {
+    throw new Error(`Failed to get pending submissions: ${error.message}`);
+  }
+}
+
+export async function updateSubmissionStatus(db, table, hash, status) {
+  const validTables = ['athletes', 'climbs', 'ascents'];
+  const validStatuses = ['valid', 'rejected'];
+  
+  if (!validTables.includes(table) || !validStatuses.includes(status)) {
+    throw new Error('Invalid table or status');
+  }
+  
+  try {
+    const query = `UPDATE ${table} SET status = ? WHERE hash = ?`;
+    const result = await db.prepare(query).bind(status, hash).run();
+    
+    if (result.changes === 0) {
+      throw new Error('No record found with that hash');
+    }
+    
+    return result;
+  } catch (error) {
+    throw new Error(`Failed to update ${table} status: ${error.message}`);
+  }
+}
+
+export async function canApproveAscent(db, ascentHash) {
+  try {
+    // Get the ascent details
+    const ascentQuery = `
+      SELECT climb_name, athlete_name
+      FROM ascents 
+      WHERE hash = ? AND status = 'pending'
+    `;
+    const ascent = await db.prepare(ascentQuery).bind(ascentHash).first();
+    
+    if (!ascent) {
+      return { canApprove: false, reason: 'Ascent not found or not pending' };
+    }
+    
+    // Check if athlete is valid
+    const athleteQuery = `
+      WITH latest_athletes AS (
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY name ORDER BY record_created DESC, hash DESC) as rn
+        FROM athletes 
+        WHERE name = ? AND status = 'valid'
+      )
+      SELECT * FROM latest_athletes 
+      WHERE rn = 1
+    `;
+    const validAthlete = await db.prepare(athleteQuery).bind(ascent.athlete_name).first();
+    
+    if (!validAthlete) {
+      return { canApprove: false, reason: 'Athlete is not valid' };
+    }
+    
+    // Check if climb is valid
+    const climbQuery = `
+      WITH latest_climbs AS (
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY name ORDER BY record_created DESC, hash DESC) as rn
+        FROM climbs 
+        WHERE name = ? AND status = 'valid'
+      )
+      SELECT * FROM latest_climbs 
+      WHERE rn = 1
+    `;
+    const validClimb = await db.prepare(climbQuery).bind(ascent.climb_name).first();
+    
+    if (!validClimb) {
+      return { canApprove: false, reason: 'Climb is not valid' };
+    }
+    
+    return { canApprove: true };
+  } catch (error) {
+    throw new Error(`Failed to check ascent approval: ${error.message}`);
+  }
 }
